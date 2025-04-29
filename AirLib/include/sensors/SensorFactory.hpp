@@ -5,11 +5,12 @@
 #include "SensorCollection.hpp"
 #include <memory>
 
-//sensors
+// sensors
 #include "sensors/imu/ImuSimple.hpp"
 #include "sensors/magnetometer/MagnetometerSimple.hpp"
 #include "sensors/gps/GpsSimple.hpp"
 #include "sensors/barometer/BarometerSimple.hpp"
+#include "sensors/radar/RadarSimple.hpp"   // ✅ RadarSimple 추가
 
 namespace msr
 {
@@ -21,32 +22,48 @@ namespace airlib
     public:
         // creates one sensor from settings
         virtual std::shared_ptr<SensorBase> createSensorFromSettings(
-            const AirSimSettings::SensorSetting* sensor_setting) const
+            const SensorBase::SensorSetting* sensor_setting) const
         {
+            if (!sensor_setting)
+                return nullptr;
+
             switch (sensor_setting->sensor_type) {
-            case SensorBase::SensorType::Imu:
-                return std::shared_ptr<ImuSimple>(new ImuSimple(*static_cast<const AirSimSettings::ImuSetting*>(sensor_setting)));
-            case SensorBase::SensorType::Magnetometer:
-                return std::shared_ptr<MagnetometerSimple>(new MagnetometerSimple(*static_cast<const AirSimSettings::MagnetometerSetting*>(sensor_setting)));
-            case SensorBase::SensorType::Gps:
-                return std::shared_ptr<GpsSimple>(new GpsSimple(*static_cast<const AirSimSettings::GpsSetting*>(sensor_setting)));
-            case SensorBase::SensorType::Barometer:
-                return std::shared_ptr<BarometerSimple>(new BarometerSimple(*static_cast<const AirSimSettings::BarometerSetting*>(sensor_setting)));
+            case SensorBase::SensorType::Imu: {
+                auto imu_setting = static_cast<const AirSimSettings::ImuSetting*>(sensor_setting);
+                return std::make_shared<ImuSimple>(*imu_setting);
+            }
+            case SensorBase::SensorType::Magnetometer: {
+                auto mag_setting = static_cast<const AirSimSettings::MagnetometerSetting*>(sensor_setting);
+                return std::make_shared<MagnetometerSimple>(*mag_setting);
+            }
+            case SensorBase::SensorType::Gps: {
+                auto gps_setting = static_cast<const AirSimSettings::GpsSetting*>(sensor_setting);
+                return std::make_shared<GpsSimple>(*gps_setting);
+            }
+            case SensorBase::SensorType::Barometer: {
+                auto baro_setting = static_cast<const AirSimSettings::BarometerSetting*>(sensor_setting);
+                return std::make_shared<BarometerSimple>(*baro_setting);
+            }
+            case SensorBase::SensorType::Radar: {
+                auto radar_setting = static_cast<const AirSimSettings::RadarSetting*>(sensor_setting);
+                RadarSimpleParams params;
+                params.initializeFromSettings(*radar_setting);
+                return std::make_shared<RadarSimple>(radar_setting->sensor_name, params);
+            }
             default:
-                throw new std::invalid_argument("Unexpected sensor type");
+                throw std::invalid_argument("Unknown sensor type");
             }
         }
 
         // creates sensor-collection
         virtual void createSensorsFromSettings(
-            const std::map<std::string, std::shared_ptr<AirSimSettings::SensorSetting>>& sensors_settings,
+            const std::map<std::string, std::shared_ptr<SensorBase::SensorSetting>>& sensors_settings,
             SensorCollection& sensors,
             vector<shared_ptr<SensorBase>>& sensor_storage) const
         {
             for (const auto& sensor_setting_pair : sensors_settings) {
-                const AirSimSettings::SensorSetting* sensor_setting = sensor_setting_pair.second.get();
+                const SensorBase::SensorSetting* sensor_setting = sensor_setting_pair.second.get();
 
-                // ignore sensors that are marked "disabled" in settings
                 if (sensor_setting == nullptr || !sensor_setting->enabled)
                     continue;
 
@@ -60,6 +77,7 @@ namespace airlib
 
         virtual ~SensorFactory() = default;
     };
+
 }
 } //namespace
 #endif

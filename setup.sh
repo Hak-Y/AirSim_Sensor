@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#! /bin/bash
 set -x
 set -e
 
@@ -6,18 +6,11 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 pushd "$SCRIPT_DIR" >/dev/null
 
 downloadHighPolySuv=true
-
 MIN_CMAKE_VERSION=3.10.0
-# On macOS, make sure we have a CMake that will support CMAKE_APPLE_SILICON_PROCESSOR.
-if [ "$(uname)" == "Darwin" ]; then
-    MIN_CMAKE_VERSION=3.19.2
-fi
-
-DEBUG="${DEBUG:-false}"
 function version_less_than_equal_to() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" = "$1"; }
 
 # brew gives error if package is already installed
-function brew_install() { brew list "$1" &>/dev/null || brew install "$1"; }
+function brew_install() { brew list $1 &>/dev/null || brew install $1; }
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]
@@ -25,23 +18,18 @@ do
 key="$1"
 
 case $key in
-    --debug)
-        DEBUG=true
-        ;;
     --no-full-poly-car)
-        downloadHighPolySuv=false
-        shift # past value
-        ;;
+    downloadHighPolySuv=false
+    shift # past value
+    ;;
 esac
-
 done
 
 # llvm tools
 if [ "$(uname)" == "Darwin" ]; then # osx
     brew update
-    # Update below line for newer versions
-    #brew install llvm@8
-    brew install llvm
+    brew tap llvm-hs/homebrew-llvm
+    brew install llvm@8
 else #linux
     sudo apt-get update
     sudo apt-get -y install --no-install-recommends \
@@ -60,7 +48,8 @@ else #linux
         wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
         sudo apt-get update
     fi
-    sudo apt-get install -y clang-8 clang++-8 libc++-8-dev libc++abi-8-dev
+#sudo apt-get install -y clang-8 clang++-8 libc++-8-dev libc++abi-8-dev
+sudo apt-get install -y clang-10 clang++-10 libc++-10-dev libc++abi-10-dev # ue 4.26
 fi
 
 if ! which cmake; then
@@ -74,29 +63,29 @@ fi
 #TODO: figure out how to do below in travis
 # Install additional tools, CMake if required
 if [ "$(uname)" == "Darwin" ]; then # osx
-    if [[ -n "${whoami}" ]]; then #this happens when running in travis
-        sudo dseditgroup -o edit -a "$(whoami)" -t user dialout
+    if [[ ! -z "${whoami}" ]]; then #this happens when running in travis
+        sudo dseditgroup -o edit -a `whoami` -t user dialout
     fi
 
     brew_install wget
     brew_install coreutils
 
-    if version_less_than_equal_to "$cmake_ver" "$MIN_CMAKE_VERSION"; then
+    if version_less_than_equal_to $cmake_ver $MIN_CMAKE_VERSION; then
         brew install cmake  # should get cmake 3.8
     else
         echo "Already have good version of cmake: $cmake_ver"
     fi
 
 else #linux
-    if [[  -n "${whoami}" ]]; then #this happens when running in travis
-        sudo /usr/sbin/useradd -G dialout "$USER"
-        sudo usermod -a -G dialout "$USER"
+    if [[ ! -z "${whoami}" ]]; then #this happens when running in travis
+        sudo /usr/sbin/useradd -G dialout $USER
+        sudo usermod -a -G dialout $USER
     fi
 
     # install additional tools
     sudo apt-get install -y build-essential unzip
 
-    if version_less_than_equal_to "$cmake_ver" "$MIN_CMAKE_VERSION"; then
+    if version_less_than_equal_to $cmake_ver $MIN_CMAKE_VERSION; then
         # in ubuntu 18 docker CI, avoid building cmake from scratch to save time
         # ref: https://apt.kitware.com/
         if [ "$(lsb_release -rs)" == "18.04" ]; then
@@ -180,14 +169,21 @@ fi
 
 echo "Installing Eigen library..."
 
+# Use existing eigen due to finicky "unsupported" dependencies
+
 if [ ! -d "AirLib/deps/eigen3" ]; then
     echo "Downloading Eigen..."
-    wget -O eigen3.zip https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.zip
-    unzip -q eigen3.zip -d temp_eigen
+    
+    # sdf changes:
+    # wget -O eigen3.zip https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.zip
+    # unzip -q eigen3.zip -d temp_eigen
     mkdir -p AirLib/deps/eigen3
-    mv temp_eigen/eigen*/Eigen AirLib/deps/eigen3
-    rm -rf temp_eigen
-    rm eigen3.zip
+    # mv temp_eigen/eigen*/Eigen AirLib/deps/eigen3
+    # rm -rf temp_eigen
+    # rm eigen3.zip
+
+    cp -R eigen3/Eigen AirLib/deps/eigen3/Eigen
+    cp -R eigen3/unsupported AirLib/deps/eigen3/unsupported
 else
     echo "Eigen is already installed."
 fi

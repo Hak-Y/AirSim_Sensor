@@ -1,19 +1,24 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef msr_airlib_SensorBase_hpp
-#define msr_airlib_SensorBase_hpp
+#pragma once
 
 #include "common/Common.hpp"
 #include "common/UpdatableObject.hpp"
 #include "common/CommonStructs.hpp"
+#include "common/Settings.hpp"
 #include "physics/Environment.hpp"
 #include "physics/Kinematics.hpp"
+#include <string>
 
 namespace msr
 {
 namespace airlib
 {
+
+// Forward declarations
+struct AirSimSettings;
+struct SensorSetting;
 
     /*
     Derived classes should not do any work in constructor which requires ground truth.
@@ -23,14 +28,23 @@ namespace airlib
     class SensorBase : public UpdatableObject
     {
     public:
-        enum class SensorType : uint
-        {
-            Barometer = 1,
-            Imu = 2,
-            Gps = 3,
-            Magnetometer = 4,
-            Distance = 5,
-            Lidar = 6
+        enum class SensorType {
+            Imu,
+            Magnetometer,
+            Gps,
+            Barometer,
+            Distance,
+            Lidar,
+            Radar
+        };
+
+        struct SensorSetting {
+            SensorType sensor_type;
+            std::string sensor_name;
+            bool enabled = true;
+            Settings settings;
+            
+            virtual ~SensorSetting() = default;
         };
 
         SensorBase(const std::string& sensor_name = "")
@@ -50,6 +64,12 @@ namespace airlib
         {
             ground_truth_.kinematics = kinematics;
             ground_truth_.environment = environment;
+        }
+    
+        // ✅ 여기에 추가
+        virtual void initializeSensor(const SensorSetting* sensor_setting)
+        {
+            (void)sensor_setting;
         }
 
         const GroundTruth& getGroundTruth() const
@@ -71,4 +91,3 @@ namespace airlib
     };
 }
 } //namespace
-#endif
