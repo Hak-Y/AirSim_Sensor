@@ -46,6 +46,9 @@ void UnrealCarlaLidarSensor::getPointCloud(const Pose& lidar_pose, const Pose& v
     CarlaLidarParams params = getParams();
     const auto number_of_lasers = params.channels;
 
+    UAirBlueprintLib::LogMessageString("CarlaLidar", "Starting point cloud generation", LogDebugLevel::Informational);
+    UAirBlueprintLib::LogMessageString("CarlaLidar", std::string(TCHAR_TO_UTF8(*FString::Printf(TEXT("Number of lasers: %d"), number_of_lasers))), LogDebugLevel::Informational);
+
     constexpr float MAX_POINTS_IN_SCAN = 1e5f;
     uint32_t total_points_to_scan = FMath::RoundHalfFromZero(params.points_per_second * delta_time);
     if (total_points_to_scan > MAX_POINTS_IN_SCAN) {
@@ -54,22 +57,34 @@ void UnrealCarlaLidarSensor::getPointCloud(const Pose& lidar_pose, const Pose& v
     }
 
     uint32_t points_per_laser = FMath::RoundHalfFromZero(total_points_to_scan / float(number_of_lasers));
-    if (points_per_laser <= 0) return;
+    if (points_per_laser <= 0) {
+        UAirBlueprintLib::LogMessageString("CarlaLidar", "No points to scan - points_per_laser is 0", LogDebugLevel::Failure);
+        return;
+    }
 
     float angle_distance = params.rotation_frequency * 360.0f * delta_time;
     float angle_per_point = angle_distance / points_per_laser;
 
-    float laser_start = std::fmod(360.0f + params.lower_fov, 360.0f);
-    float laser_end   = std::fmod(360.0f + params.upper_fov, 360.0f);
+    float laser_start = std::fmod(360.0f + params.upper_fov, 360.0f);
+    float laser_end   = std::fmod(360.0f + params.lower_fov, 360.0f);
+
+    UAirBlueprintLib::LogMessageString("CarlaLidar", std::string(TCHAR_TO_UTF8(*FString::Printf(TEXT("Laser angles: start=%.2f, end=%.2f"), laser_start, laser_end))), LogDebugLevel::Informational);
+    UAirBlueprintLib::LogMessageString("CarlaLidar", std::string(TCHAR_TO_UTF8(*FString::Printf(TEXT("Points per laser: %d"), points_per_laser))), LogDebugLevel::Informational);
+
+    uint32_t total_points_generated = 0;
+    uint32_t total_points_skipped = 0;
 
     for (uint32_t laser = 0; laser < number_of_lasers; ++laser) {
         float vertical_angle = laser_angles_[laser];
+        uint32_t points_generated_for_laser = 0;
 
         for (uint32_t i = 0; i < points_per_laser; ++i) {
             float horizontal_angle = std::fmod(current_horizontal_angle_ + angle_per_point * i, 360.0f);
 
-            if (!VectorMath::isAngleBetweenAngles(horizontal_angle, laser_start, laser_end))
+            if (!VectorMath::isAngleBetweenAngles(horizontal_angle, laser_start, laser_end)) {
+                total_points_skipped++;
                 continue;
+            }
 
             Vector3r point;
             int segmentationID = -1;
@@ -78,8 +93,23 @@ void UnrealCarlaLidarSensor::getPointCloud(const Pose& lidar_pose, const Pose& v
                 point_cloud.push_back(point.y());
                 point_cloud.push_back(point.z());
                 segmentation_cloud.push_back(segmentationID);
+                points_generated_for_laser++;
+                total_points_generated++;
             }
         }
+
+        if (points_generated_for_laser == 0) {
+            UAirBlueprintLib::LogMessageString("CarlaLidar", std::string(TCHAR_TO_UTF8(*FString::Printf(TEXT("Laser %d generated no points"), laser))), LogDebugLevel::Failure);
+        }
+    }
+
+    if (total_points_generated == 0) {
+        UAirBlueprintLib::LogMessageString("CarlaLidar", "No points were generated in this scan", LogDebugLevel::Failure);
+        UAirBlueprintLib::LogMessageString("CarlaLidar", std::string(TCHAR_TO_UTF8(*FString::Printf(TEXT("Total points skipped: %d"), total_points_skipped))), LogDebugLevel::Failure);
+    } else {
+        UAirBlueprintLib::LogMessageString("CarlaLidar", std::string(TCHAR_TO_UTF8(*FString::Printf(TEXT("Generated %d points"), total_points_generated))), LogDebugLevel::Informational);
+        UAirBlueprintLib::LogMessageString("CarlaLidar", std::string(TCHAR_TO_UTF8(*FString::Printf(TEXT("First point: (%.2f, %.2f, %.2f)"), 
+            point_cloud[0], point_cloud[1], point_cloud[2]))), LogDebugLevel::Informational);
     }
 
     current_horizontal_angle_ = std::fmod(current_horizontal_angle_ + angle_distance, 360.0f);
